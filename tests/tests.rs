@@ -280,6 +280,25 @@ mod custom_copy_attrs {
     mod inst {}
 }
 
+#[generic_tests::define]
+mod instantiate_attrs {
+    /// The #[should_panic] attribute should be added to this test by #[test_attributes], otherwise
+    /// the panic will fail the test.
+    #[test]
+    fn attr_added_by_test_attributes<T>() {
+        panic!("panicking");
+    }
+
+    #[instantiate_tests(<()>)]
+    #[test_attributes(should_panic)]
+    mod should_panic {}
+
+    /// Test of adding an attribute with inner values.
+    #[instantiate_tests(<()>)]
+    #[test_attributes(cfg_attr(test, should_panic))]
+    mod cfg_attr_should_panic {}
+}
+
 mod fn_level_attr {
 
     #[generic_tests::define]

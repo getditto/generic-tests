@@ -1,5 +1,5 @@
 use crate::error::ErrorRecord;
-use crate::extract::{InstArguments, TestFn, Tests};
+use crate::extract::{InstArguments, TestAttrs, TestFn, Tests};
 use crate::options::MacroOpts;
 
 use proc_macro2::TokenStream;
@@ -113,7 +113,12 @@ struct Instantiator {
 }
 
 impl Instantiator {
-    fn instantiate_tests(&self, inst_args: InstArguments, content: &mut Vec<Item>) {
+    fn instantiate_tests(
+        &self,
+        inst_args: InstArguments,
+        extra_attrs: TestAttrs,
+        content: &mut Vec<Item>,
+    ) {
         debug_assert!(content.is_empty());
 
         let root_path = self.root_path();
@@ -124,7 +129,14 @@ impl Instantiator {
         });
 
         for test in &self.tests.test_fns {
-            let test_attrs = &test.test_attrs;
+            let mut test_attrs = test.test_attrs.clone();
+
+            for attr in &extra_attrs.0 {
+                test_attrs.push(parse_quote! {
+                    #[#attr]
+                });
+            }
+
             let name = &test.ident;
             let lifetime_params = &test.sig.lifetime_params;
             let fn_args = test.sig.input.args.iter().map(|arg| arg.to_fn_arg());
@@ -166,8 +178,10 @@ impl Instantiator {
 impl VisitMut for Instantiator {
     fn visit_item_mod_mut(&mut self, item: &mut ItemMod) {
         debug_assert_ne!(self.depth, 0);
-        match InstArguments::try_extract(item) {
-            Ok(Some(args)) => {
+        match InstArguments::try_extract(item)
+            .and_then(|args| Ok((args, TestAttrs::try_extract(item)?)))
+        {
+            Ok((Some(args), attrs)) => {
                 let content = match &mut item.content {
                     None => {
                         self.errors.add_error(Error::new_spanned(
@@ -187,9 +201,9 @@ impl VisitMut for Instantiator {
                         content
                     }
                 };
-                self.instantiate_tests(args, content);
+                self.instantiate_tests(args, attrs, content);
             }
-            Ok(None) => {
+            Ok((None, _)) => {
                 self.depth += 1;
                 visit_mut::visit_item_mod_mut(self, item);
                 self.depth -= 1;

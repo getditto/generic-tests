@@ -168,3 +168,30 @@ impl ToTokens for InstArguments {
         self.0.to_tokens(tokens)
     }
 }
+
+#[derive(Default)]
+pub struct TestAttrs(pub(crate) Punctuated<TokenStream, Token![,]>);
+
+impl TestAttrs {
+    pub fn try_extract(item: &mut ItemMod) -> syn::Result<Self> {
+        for (pos, attr) in item.attrs.iter().enumerate() {
+            if attr.path.is_ident("test_attributes") {
+                match attr.style {
+                    AttrStyle::Outer => {}
+                    AttrStyle::Inner(_) => {
+                        return Err(Error::new_spanned(attr, "cannot be an inner attribute"))
+                    }
+                };
+                // Parse each top-level comma-separated argument provided to the attribute as a
+                // `TokenStream`. In other words, the only validation performed on the arguments is
+                // that they must be zero or more comma-separated *somethings*. Since whatever
+                // those somethings are will be spit out as attributes again, they will eventually
+                // be validated by the actual rustc parser.
+                let args = attr.parse_args_with(Punctuated::parse_terminated)?;
+                item.attrs.remove(pos);
+                return Ok(TestAttrs(args));
+            }
+        }
+        Ok(TestAttrs::default())
+    }
+}
